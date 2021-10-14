@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>golang分布式crontab</title>
+        <!-- bootstrap + jquery只是实现功能，视觉上的炫酷就不做了-->
+        <script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script>
+        <link href="https://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+        <script src="https://cdn.bootcss.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    </head>
+    <body>
+        <div class="container-fluid">
+            <!-- 页头 第一行 -->
+            <div class="row">
+                <div class="col-md-12">
+                     <div class="page-header"> <!--这里做了一个页头，放在了一个row中 -->
+                        <!-- small标签在这里是增加一个副标题 -->
+                        <h1>管理后台<small>golang分布式crontab</small></h1>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 功能按钮 第二行 -->
+            <div class="row">
+                <div class="col-md-12">
+                    <button type="button" class="btn btn-primary" id="new-job">新建任务</button>
+                    <button type="button" class="btn btn-success" id="list-worker">健康节点</button>
+                </div>
+            </div>
+
+            <!-- 任务列表 第三行 -->
+            <div class="row">
+                <!-- style="margin-top: 20px是添加和上一行的间距 -->
+                <div class="panel panel-default" style="margin-top: 20px;">
+                    <!-- panel的标题部分这儿没用，直接用的body部分 -->
+                    <div class="panel-body">
+                        <table id="job-list" class="table table-striped">
+                            <!-- 先定义table的表头 -->
+                            <thead>
+                                <tr>
+                                    <th>任务名称</th>
+                                    <th>shell命令</th>
+                                    <th>cron表达式</th>
+                                    <th>任务操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+
+                                <!-- <tr>
+                                    <th class="job-name">job1</th>
+                                    <th class="job-command">echo hello</th>
+                                    <th class="job-cronExpr">* * * * *</th>
+                                    <th>
+                                         ##按钮组
+                                        <div class="btn-toolbar">
+                                            <button class="btn btn-info edit-job">编辑</button>
+                                            <button class="btn btn-danger delete-job">删除</button>
+                                            <button class="btn btn-warning kill-job">强杀</button>
+                                        </div>
+                                    </th>
+                                </tr> -->
+                                <!-- 上边这个是个实例，这一部分真正会由javascript来填充 -->
+                            </tbody>
+
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    
+    <!-- position: fixed -->
+    <div id="edit-modal" class="modal fade" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title">编辑任务</h4>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="form-group">
+                        <label for="edit-name">任务名称</label> <!--通过for来让这个label标签在提交的时候也归属于下边input的这个id -->
+                        <input type="text" class="form-control", id="edit-name" placeholder="任务名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-command">shell命令</label> <!--通过for来让这个label标签在提交的时候也归属于下边input的这个id -->
+                        <input type="text" class="form-control", id="edit-command" placeholder="shell命令">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-cronExpr">cron表达式</label> <!--通过for来让这个label标签在提交的时候也归属于下边input的这个id -->
+                        <input type="text" class="form-control", id="edit-cronExpr" placeholder="cron表达式">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+            <button type="button" class="btn btn-primary" id="save-job">保存</button> <!--点保存的时候我们来发起一个ajax请求 -->
+            </div>
+        </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+    
+    <!-- 日志模态框 -->
+    <div id="log-modal" class="modal fade" tabindex="-1" role="dialog">
+        <!-- modal-lg表示变成大号的 -->
+        <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title">任务日志</h4>
+            </div>
+            <div class="modal-body">
+                <table id="log-list" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>shell命令</th>
+                            <th>错误原因</th>
+                            <th>脚本输出</th>
+                            <th>计划开始时间</th>
+                            <th>实际调度时间</th>
+                            <th>开始执行时间</th>
+                            <th>执行结束时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+            </div>
+        </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+
+    <!-- 健康节点模态框 -->
+    <div id="worker-modal" class="modal fade" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title">健康节点</h4>
+            </div>
+            <div class="modal-body">
+                <table id="worker-list" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>节点IP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+            </div>
+        </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+
+
+    <script>
+
+        // 1.当页面加载完毕之后回调这个函数
+        $(document).ready(function() {
+
+            //定义一个工具函数(时间格式化函数),返回一个格式化的字符串,js中处理时间的不是很方便需要自己去处理,js中没有前缀补0的功能
+            function timeFormat(millsecond) {
+                //前缀补0: 2018-08-07 08:01:03.345
+                // 实现对任意的num前缀补0,补的总长度是到n
+                function paddingNum(num, n) {
+                    var len = num.toString().length
+                    while (len < n) {
+                        num = '0' + num
+                        len++
+                    }
+                    return num
+                }
+
+                //创建一个date对象，可以传入毫秒
+                var date = new Date(millsecond)
+                var year = date.getFullYear()
+                //0-11月
+                var month = paddingNum(date.getMonth()+1, 2)
+                var day = paddingNum(date.getDate(), 2)
+                var hour = paddingNum(date.getHours(), 2)
+                var minute = paddingNum(date.getMinutes(), 2)
+                var second = paddingNum(date.getSeconds(), 2)
+                var millsecond = paddingNum(date.getMilliseconds(), 3)
+
+                return year + "-" + month + "-" + day + " " + hour + ":" + minute + ":" + second + "." + millsecond
+            }
+
+
+            //绑定按钮的时间处理函数
+            //用javascript委托机制，DOM事件冒泡的一个关键原理.比如当一个点击点击在tbody内部的时候，点击事件会向dom的父级冒泡，冒泡到tbody上，再冒泡到table标签上，我们只需要在table上绑定一个事件处理函数。
+            //在id为job-list处监听子元素的click事件,不能是子元素的任何位置而是一个按钮，这里给个过滤,只有满足.edit-job这个上的点击才会冒泡
+            $("#job-list").on("click", ".edit-job", function(event) {
+                console.log("编辑按钮", event)
+                console.log(this) //javascript会将触发事件源bind到this上,$(this)在这里就表示编辑按钮本身
+                console.log($(this).parents("tr").children(".job-name").text()) //找到this父亲的第一个tr行,这个行会有个children方法，找到.job-name这一列并取它的值
+                
+                //取当前job的信息，然后赋值给模态框的input
+                $('#edit-name').val($(this).parents('tr').children('.job-name').text())
+                $('#edit-command').val($(this).parents('tr').children('.job-command').text())
+                $('#edit-cronExpr').val($(this).parents('tr').children('.job-cronExpr').text())
+                //弹出模态框
+                $('#edit-modal').modal('show') //点一下编辑按钮就会弹出上边定义的#edit-modal这个模态框
+            })
+            //删除任务
+            $("#job-list").on("click", ".delete-job", function() {
+                console.log("删除按钮")
+                var jobName = $(this).parents("tr").children(".job-name").text()
+                $.ajax({
+                    url: '/job/delete',
+                    type: 'post',
+                    dataType: 'json',
+                    data: {name: jobName}, //这个是post的数据
+                    complete: function() { //删除完成后会有一个回调函数,最简单的就是删除后页面会刷新下
+                        window.location.reload() //立马就刷新了，会导致在web的F12的network中看不到delete记录
+                    }
+                })
+            })
+            //强杀任务
+            $("#job-list").on("click", ".kill-job", function() {
+                console.log("强杀按钮")
+                var jobName = $(this).parents("tr").children(".job-name").text()
+                $.ajax({
+                    url: '/job/kill',
+                    type: 'post',
+                    dataType: 'json',
+                    data: {name: jobName}, //这个是post的数据
+                    complete: function() { //删除完成后会有一个回调函数,最简单的就是删除后页面会刷新下
+                        window.location.reload() 
+                    }
+                })
+                
+            })
+
+            //查看任务日志
+ 
+            $("#job-list").on("click", ".log-job", function(event) {
+                console.log("日志查看按钮", event)
+                //获取任务名
+                var jobName = $(this).parents("tr").children('.job-name').text()
+
+                //请求/job/log接口
+                $.ajax({
+                    url: "/job/log",
+                    dataType: 'json',
+                    data: {name: jobName},
+                    // 请求成功就执行这个回调函数
+                    success: function(resp) {
+                        if (resp.errno != 0) {
+                            return
+                        }
+                    // 清空模态框中#log-list这个table的tbody
+                    $('#log-list tbody').empty()
+                    //遍历日志
+                    var logList = resp.data
+                    for (var i = 0; i < logList.length; ++i) {
+                        var log = logList[i]
+                        var tr = $('<tr>')  //创建一列 <tr></tr>
+                        //在上边创建的一行中append各个列
+                        tr.append($('<td>').html(log.command))
+                        tr.append($('<td>').html(log.err))
+                        tr.append($('<td>').html(log.output))
+                        tr.append($('<td>').html(timeFormat(log.planTime)))
+                        tr.append($('<td>').html(timeFormat(log.scheduleTime)))
+                        tr.append($('<td>').html(timeFormat(log.startTime)))
+                        tr.append($('<td>').html(timeFormat(log.endTime)))
+                        console.log(tr)
+                        $("#log-list tbody").append(tr)
+                    }
+                    }
+                })
+                //弹出模态框 //上边的这个$.ajax是异步的
+                $('#log-modal').modal('show') //点一下编辑按钮就会弹出上边定义的#log-modal这个模态框
+            })
+
+            //查看健康的worker
+            // #job-list表示id为list-worker的按钮
+            $("#list-worker").on("click", function() {
+                // 清空#worker-list这个table
+                $('#worker-list tbody').empty()
+
+                //请求/worker/list接口
+                $.ajax({
+                    url: "/worker/list",
+                    dataType: 'json',
+                    // 请求成功就执行这个回调函数
+                    success: function(resp) {
+                        if (resp.errno != 0) {
+                            return
+                        }
+                    var workerlist = resp.data
+                    //遍历每个ip，添加到模态框中的table中
+                    
+                    for (var i = 0; i < workerlist.length; ++i) {
+                        var workerIP = workerlist[i]
+                        var tr = $('<tr>')  //创建一列 <tr></tr>
+                        //在上边创建的一行中append各个列
+                        tr.append($('<td>').html(workerIP))
+                        console.log(tr)
+                        $("#worker-list tbody").append(tr)
+                    }
+                    }
+                })
+                //弹出模态框 //上边的这个$.ajax是异步的
+                $('#worker-modal').modal('show') //点一下编辑按钮就会弹出上边定义的#log-modal这个模态框
+            })
+
+
+            //保存任务，这个就没有用到过滤，直接在id为save-job的按钮上绑定一个事件
+            $("#save-job").on("click",  function() {
+                //先构建一个json格式的job(这里还是个对象，在下边提交的时候需要对它序列化)，这个是从弹出的模态框中取的
+                var jobInfo = {name: $('#edit-name').val(), command: $('#edit-command').val(), cronExpr: $('#edit-cronExpr').val()}
+                $.ajax({
+                    url: '/job/save',
+                    type: 'post',
+                    dataType: 'json',
+                    data: {job: JSON.stringify(jobInfo)}, //JSON.stringify(jobInfo)传入的是一个json对象，得到的是一个json字符串
+                    complete: function() {
+                        window.location.reload() 
+                    }
+                })
+                
+            })
+
+
+            //新建任务
+            $('#new-job').on("click", function() {
+                //先清空掉表单
+                $('#edit-name').val()
+                $('#edit-command').val()
+                $('#edit-cronExpr').val()
+                //弹出模态框
+                $('#edit-modal').modal('show') //点一下编辑按钮就会弹出上边定义的#edit-modal这个模态框
+            })
+
+            //2.定义一个函数，用于刷新任务列表
+            function rebuildJobList() {
+                //这个方法用于请求/job/list接口,通过ajax来拉取
+                $.ajax({
+                    url: '/job/list',
+                    dataType: 'json', //定义拉取到的数据是json类型的
+                    //回调成功的时候做一个事情
+                    success: function(resp) {
+                        if (resp.errno != 0) { //说明服务端出错了，这里就静默处理了
+                            return
+                        }
+                        //任务数组
+                        var jobList = resp.data
+                        //清理列表
+                        $('#job-list tbody').empty()
+                        //遍历任务列表，填充table
+                        for (var i = 0; i < jobList.length; ++i) {
+                            var job = jobList[i]
+                            var tr = $("<tr>")
+                            tr.append($('<td class="job-name">').html(job.name))
+                            tr.append($('<td class="job-command">').html(job.command))
+                            tr.append($('<td class="job-cronExpr">').html(job.cronExpr))
+                            var toolbar = $('<div class="btn-toolbar">')
+                                .append('<button class="btn btn-info edit-job">编辑</button>')
+                                .append('<button class="btn btn-danger delete-job">删除</button>')
+                                .append('<button class="btn btn-warning kill-job">强杀</button>')
+                                .append('<button class="btn btn-success log-job">日志</button>')
+                            tr.append($('<td>').append(toolbar))
+                            $("#job-list tbody").append(tr) //将tr附加到job-list这个table的tbody中
+
+                        }
+                    }
+                })
+            }
+            //调用下定义的函数
+            rebuildJobList()
+        })
+        
+
+    </script>
+    </body>
+</html>
